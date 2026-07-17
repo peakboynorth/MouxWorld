@@ -1,0 +1,447 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Role detection: We trust the database document and the verified master email
+    // Note: We allow the master email unverified for developer testing as requested
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.get('email', '') == 'pervercy23@gmail.com' ||
+        (request.auth.token.get('email_verified', false) == true && 
+         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('isAdmin', false) == true)
+      );
+    }
+
+    function isNotBanned() {
+      return !isSignedIn() || 
+             !exists(/databases/$(database)/documents/users/$(request.auth.uid)) ||
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('isBanned', false) == false;
+    }
+
+    // --- Settings ---
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // --- Config ---
+    match /config/{configId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // --- System Control ---
+    match /system_control/{controlId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // --- Redeemed Transactions ---
+    match /redeemed_transactions/{transactionId} {
+      allow get: if isSignedIn();
+      allow create: if isSignedIn() && isNotBanned() && 
+                    incoming().uid == request.auth.uid && 
+                    incoming().amount is number &&
+                    incoming().currency is string &&
+                    incoming().redeemedAt is number &&
+                    incoming().mouxCredited is number &&
+                    incoming().paymentMethod is string;
+      allow update, delete: if isAdmin();
+    }
+
+    // --- System / Test ---
+    match /test/{docId} {
+      allow get: if true;
+    }
+
+    // --- World Constants ---
+    match /world_countries/{countryId} {
+      allow get: if true;
+      allow list: if true;
+      allow create: if isSignedIn();
+      allow update: if isAdmin() || (
+        isSignedIn() && 
+        incoming().get('presidentId', '') == request.auth.uid && 
+        existing().get('presidentId', '') == null &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['presidentId']) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('inventory', []) != null &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('inventory', []).hasAny(['Presidential Pass'])
+      );
+    }
+    match /world_cities/{cityId} {
+      allow get: if true;
+      allow list: if true;
+      allow create: if isSignedIn();
+      allow update: if isAdmin() || (
+        isSignedIn() && 
+        incoming().get('ownerId', '') == request.auth.uid && 
+        existing().get('ownerId', '') == null &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['ownerId']) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('inventory', []) != null &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('inventory', []).hasAll(['City Owner Pass', 'Verification Application'])
+      );
+    }
+
+    // --- User Profiles ---
+    match /users/{userId} {
+      // Allow any signed-in user to view profiles
+      allow get: if isSignedIn();
+      allow list: if isSignedIn(); // Restricted by query filter in app
+      
+      function isValidUser(data) {
+        return data.get('displayName', 'Guest') != null && data.get('displayName', 'Guest') is string && data.get('displayName', 'Guest').size() >= 3 && data.get('displayName', 'Guest').size() <= 20 &&
+               data.get('rank', 'Wanderer') != null && data.get('rank', 'Wanderer') is string &&
+               data.get('location', '') != null && data.get('location', '') is string && data.get('location', '').size() <= 64 &&
+               data.get('mouxBalance', 0) != null && data.get('mouxBalance', 0) is number &&
+               (data.get('mouxAssetValue', 0) == null || data.get('mouxAssetValue', 0) is number) &&
+               data.get('isBanned', false) != null && data.get('isBanned', false) is bool &&
+               data.get('isAdmin', false) != null && data.get('isAdmin', false) is bool &&
+               data.get('isGuest', false) != null && data.get('isGuest', false) is bool &&
+               (data.get('email', '') == null || data.get('email', '') is string) &&
+               data.get('createdAt', 0) != null && data.get('createdAt', 0) is number;
+      }
+
+      allow create: if isSignedIn() && userId == request.auth.uid && isValidUser(incoming()) &&
+                    incoming().get('isAdmin', false) == (request.auth.token.get('email', '') == 'pervercy23@gmail.com') && 
+                    incoming().get('isBanned', false) == false &&
+                    (
+                      (incoming().get('isGuest', false) == false && incoming().mouxBalance >= 2500) ||
+                      (incoming().get('isGuest', false) == true && incoming().mouxBalance >= 250)
+                    );
+
+      allow update: if isSignedIn() && (
+        // Action: Admin Modification
+        (isAdmin() && isValidUser(incoming())) ||
+        // Action: User self-update
+        (userId == request.auth.uid && isValidUser(incoming()) && 
+         incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'location', 'ageVerified', 'nameChangePasses', 'bio', 'profileColor', 'photoURL', 'blockedUsers', 'mutedUsers', 'followersCount', 'followingCount', 'lastSeen', 'isOnline', 'avatar_base64', 'mouxBalance', 'mouxCrypto', 'mouxAssetValue', 'primaryWeaponId', 'primaryWeaponName', 'inventory', 'isVerified', 'is_verified', 'is_pro', 'is_pro_plus', 'is_veteran', 'favoriteMarketItems', 'last_username_update', 'worldCountry', 'worldCity', 'expiryDate', 'isGuest', 'email', 'badges', 'updatedAt', 'muteGlobalPopups', 'recentPosts', 'shadowMutedUntil', 'is_new_user', 'username', 'lastLoginDate', 'loginStreak', 'twoFactorEnabled', 'twoFactorSecret', 'twoFactorRecoveryCodes']) &&
+         existing().get('isBanned', false) == false &&
+         // Immutability checks for critical fields (users can't promote themselves or unban themselves)
+         incoming().get('rank', 'Wanderer') == existing().get('rank', 'Wanderer') &&
+         incoming().get('isAdmin', false) == existing().get('isAdmin', false) &&
+         incoming().get('isBanned', false) == existing().get('isBanned', false) &&
+         // isVerified can only be changed by users if they are setting it to FALSE (expiry)
+         (incoming().get('is_verified', false) == existing().get('is_verified', false) || incoming().get('is_verified', false) == false) &&
+         (incoming().get('isVerified', false) == existing().get('isVerified', false) || incoming().get('isVerified', false) == false) &&
+         // Limit name change if no passes left (unless new user onboarding)
+         (incoming().get('displayName', '') == existing().get('displayName', '') || existing().get('nameChangePasses', 0) > 0 || existing().get('is_new_user', false) == true || isAdmin())) ||
+        // Action: Follow counts (Cross-user update allowed for followersCount)
+        (
+          incoming().diff(existing()).affectedKeys().hasOnly(['followersCount', 'followingCount']) &&
+          (
+            // When someone follows/unfollows you (they increment your followersCount)
+            (incoming().get('followersCount', 0) == existing().get('followersCount', 0) + 1 ||
+             incoming().get('followersCount', 0) == existing().get('followersCount', 0) - 1) ||
+            // When you follow/unfollow someone (you increment YOUR followingCount)
+            (userId == request.auth.uid && 
+             (incoming().get('followingCount', 0) == existing().get('followingCount', 0) + 1 ||
+              incoming().get('followingCount', 0) == existing().get('followingCount', 0) - 1) ||
+             (incoming().get('followingCount', 0) == existing().get('followingCount', 0))) // Allow no change if only followersCount changed
+          )
+        )
+      );
+      
+      allow delete: if isAdmin();
+    }
+
+    match /banned_users/{userId} {
+      allow read: if isAdmin() || (isSignedIn() && userId == request.auth.uid);
+      allow create: if isAdmin();
+      allow update: if isAdmin() || (isSignedIn() && userId == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['appealText', 'appealStatus', 'updatedAt']));
+      allow delete: if isAdmin();
+    }
+
+    // --- Follows ---
+    match /follows/{followId} {
+      allow read: if isSignedIn();
+      allow list: if isSignedIn() && (resource == null || resource.data.followerId == request.auth.uid);
+      
+      function isValidFollow(data) {
+        return data.followerId == request.auth.uid &&
+               data.followingId is string &&
+               data.createdAt == request.time;
+      }
+
+      allow create: if isSignedIn() && isValidFollow(incoming()) && 
+                    exists(/databases/$(database)/documents/users/$(incoming().followingId));
+      allow delete: if isSignedIn() && resource.data.followerId == request.auth.uid;
+    }
+
+    // --- Private Messages ---
+    match /private_messages/{dmId} {
+      allow read: if isSignedIn() && (resource.data.senderId == request.auth.uid || resource.data.receiverId == request.auth.uid);
+      
+      function isValidDM(data) {
+        return data.senderId == request.auth.uid &&
+               data.receiverId is string &&
+               data.text is string && data.text.size() <= 1000 &&
+               data.createdAt == request.time &&
+               data.read == false;
+      }
+
+      allow create: if isSignedIn() && isNotBanned() && isValidDM(incoming());
+      allow update: if isSignedIn() && (
+        incoming().diff(existing()).affectedKeys().hasOnly(['read']) &&
+        existing().receiverId == request.auth.uid
+      );
+    }
+
+    // --- Notifications ---
+    match /notifications/{notifId} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      
+      allow create: if isSignedIn(); // Allow any user to notify (e.g. for reports)
+      
+      allow update: if isSignedIn() && 
+                    resource.data.userId == request.auth.uid &&
+                    incoming().diff(existing()).affectedKeys().hasOnly(['read']);
+      
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    // --- Reports ---
+    match /reports/{reportId} {
+      allow read: if isAdmin();
+      allow list: if isAdmin();
+      
+      function isValidReport(data) {
+        return data.reporterId == request.auth.uid &&
+               data.reporterName is string &&
+               data.targetId is string &&
+               data.targetType in ['feed', 'chat'] &&
+               data.targetContent is string &&
+               data.authorId is string &&
+               data.reason is string && data.reason.size() <= 500 &&
+               data.createdAt == request.time &&
+               data.status == 'pending';
+      }
+
+      allow create: if isSignedIn() && isValidReport(incoming());
+      allow update: if isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['status']);
+    }
+
+    // --- Admin Logs ---
+    match /admin_logs/{logId} {
+      allow read: if isAdmin();
+      allow list: if isAdmin();
+      
+      function isValidLog(data) {
+        return data.adminId == request.auth.uid &&
+               data.adminName is string &&
+               data.action is string &&
+               data.details is string &&
+               data.createdAt == request.time;
+      }
+
+      allow create: if isAdmin() && isValidLog(incoming());
+    }
+
+    // --- World Feed ---
+    match /world_feed/{statusId} {
+      // Read access: Approved posts are global, authors/admins see everything
+      allow read: if isSignedIn() && (
+        resource.data.get('moderationStatus', 'approved') == 'approved' ||
+        resource.data.authorId == request.auth.uid || 
+        isAdmin()
+      );
+      
+      function isValidStatus(data) {
+        return data.authorId is string && 
+               data.authorName is string &&
+               data.content is string && data.content.size() <= 500 &&
+               (data.get('image', '') is string && data.get('image', '').size() <= 8000000) &&
+               (data.get('isEdited', false) == false || data.isEdited is bool) &&
+               (data.get('isSystem', false) == false || data.isSystem is bool) &&
+               (data.get('authorIsVerified', false) == false || data.authorIsVerified is bool) &&
+               (data.get('authorBadges', []) is list) &&
+               (data.get('likes', []) is list) &&
+               (data.get('reactions', {}) is map) &&
+                (data.get('poll', null) == null || data.poll is map) &&
+               (data.get('repliesCount', 0) is number);
+      }
+
+      allow create: if isSignedIn() && isNotBanned() && 
+                    (incoming().authorId == request.auth.uid || incoming().authorId == 'MOUXBOT') && 
+                    isValidStatus(incoming()) &&
+                    incoming().createdAt == request.time &&
+                    (
+                      isAdmin() || 
+                      incoming().get('moderationStatus', 'approved') == (incoming().get('isMature', false) ? 'pending' : 'approved') ||
+                      incoming().get('moderationStatus', 'approved') == 'shadow_muted'
+                    );
+
+      allow update: if isSignedIn() && (
+        // Action: Admin Moderation
+        (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['moderationStatus'])) ||
+        // Action: Author Edit
+        (existing().authorId == request.auth.uid && isNotBanned() && isValidStatus(incoming()) &&
+         incoming().diff(existing()).affectedKeys().hasOnly(['content', 'isEdited']) &&
+         incoming().authorId == existing().authorId &&
+         incoming().createdAt == existing().createdAt) ||
+        // Action: Social Interaction (Likes & Replies & Reactions)
+        (isNotBanned() && isValidStatus(incoming()) &&
+         incoming().diff(existing()).affectedKeys().hasAny(['likes', 'repliesCount', 'reactions', 'poll']) &&
+         incoming().diff(existing()).affectedKeys().hasOnly(['likes', 'repliesCount', 'reactions', 'poll']) &&
+         incoming().authorId == existing().authorId &&
+         incoming().createdAt == existing().createdAt)
+      );
+      allow delete: if isAdmin() || (isSignedIn() && existing().authorId == request.auth.uid);
+    }
+
+    match /post_comments/{commentId} {
+      function isValidComment(data) {
+        return data.postId is string &&
+               data.authorId == request.auth.uid &&
+               data.authorName is string &&
+               data.content is string && data.content.size() <= 300 &&
+               data.createdAt is number;
+      }
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isNotBanned() && isValidComment(incoming());
+      allow delete: if isAdmin() || (isSignedIn() && existing().authorId == request.auth.uid);
+    }
+
+    // --- World Chat ---
+    match /{chatCollection}/{messageId} {
+      allow read: if isSignedIn() && chatCollection.matches('^world_chat_.*$');
+      
+      function isValidMessage(data) {
+        return chatCollection.matches('^world_chat_.*$') &&
+               data.authorId == request.auth.uid && 
+               data.authorName is string &&
+               data.text is string && data.text.size() <= 280 &&
+               (data.get('isEdited', false) == false || data.isEdited is bool) &&
+               data.get('worldId', '') is string &&
+               data.keys().hasAll(['authorId', 'authorName', 'text', 'createdAt']) && 
+               data.keys().size() <= 9; // authorId, authorName, text, createdAt, authorIsVerified, isEdited, authorBadges, worldId
+      }
+
+      allow create: if isSignedIn() && isNotBanned() && isValidMessage(incoming()) &&
+                    incoming().createdAt == request.time &&
+                    incoming().get('isEdited', false) == false;
+      
+      allow update: if isSignedIn() && (
+        // Action: Author Edit
+        (existing().authorId == request.auth.uid && isNotBanned() && isValidMessage(incoming()) &&
+         incoming().diff(existing()).affectedKeys().hasOnly(['text', 'isEdited']) &&
+         incoming().authorId == existing().authorId &&
+         incoming().createdAt == existing().createdAt) ||
+        // Action: Admin
+        isAdmin()
+      );
+      allow delete: if isAdmin() || (isSignedIn() && existing().authorId == request.auth.uid);
+    }
+
+    // --- Community Servers ---
+    match /community_servers/{serverId} {
+      // Read access: Public servers are visible, owners/admins see private ones
+      allow get: if isSignedIn() && (
+        resource.data.isPublic == true ||
+        resource.data.ownerId == request.auth.uid || 
+        isAdmin()
+      );
+      allow list: if isSignedIn() && (
+        resource.data.isPublic == true ||
+        resource.data.ownerId == request.auth.uid || 
+        isAdmin()
+      );
+      
+      function isValidCommunityServer(data) {
+        return data.ownerId is string &&
+               data.ownerName is string &&
+               data.name is string && data.name.size() >= 3 && data.name.size() <= 64 &&
+               (data.get('description', '') == null || (data.get('description', '') is string && data.get('description', '').size() <= 500)) &&
+               data.isPublic is bool &&
+               data.membersCount is number &&
+               (data.get('server_id', '') == null || data.get('server_id', '') is string) &&
+               (data.get('server_name', '') == null || data.get('server_name', '') is string) &&
+               (data.get('server_avatar', '') == null || data.get('server_avatar', '') is string) &&
+               (data.get('district_channels', []) == null || data.get('district_channels', []) is list) &&
+               data.keys().hasAll(['name', 'ownerId', 'ownerName', 'isPublic', 'createdAt', 'membersCount']) &&
+               data.keys().size() <= 16;
+      }
+
+      allow create: if isSignedIn() && isNotBanned() && isValidCommunityServer(incoming()) &&
+                    incoming().ownerId == request.auth.uid &&
+                    incoming().createdAt == request.time &&
+                    incoming().membersCount == 1;
+
+      allow update: if isSignedIn() && (
+        // Tier 1: Owner or Admin updating anything
+        ((isAdmin() || (existing().ownerId == request.auth.uid && isNotBanned())) &&
+         isValidCommunityServer(incoming()) &&
+         incoming().ownerId == existing().ownerId &&
+         incoming().createdAt == existing().createdAt &&
+         incoming().diff(existing()).affectedKeys().hasOnly(['name', 'description', 'iconURL', 'isPublic', 'membersCount', 'server_id', 'server_name', 'server_avatar', 'district_channels'])) ||
+        // Tier 2: Non-owner member joining/leaving (updating membersCount only)
+        (isNotBanned() &&
+         isValidCommunityServer(incoming()) &&
+         incoming().ownerId == existing().ownerId &&
+         incoming().createdAt == existing().createdAt &&
+         incoming().diff(existing()).affectedKeys().hasOnly(['membersCount']))
+      );
+      
+      allow delete: if isAdmin() || (isSignedIn() && existing().ownerId == request.auth.uid);
+
+      match /history/{logId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn() && isNotBanned() &&
+                      incoming().userId == request.auth.uid &&
+                      incoming().type in ['join', 'leave'] &&
+                      incoming().timestamp is number &&
+                      incoming().username is string;
+        allow update, delete: if isAdmin();
+      }
+
+      match /members/{memberId} {
+        allow read: if isSignedIn();
+        allow create, update, delete: if isSignedIn() && memberId == request.auth.uid && isNotBanned();
+      }
+
+      match /districts/{districtId} {
+        allow read: if isSignedIn();
+        allow create, update, delete: if isSignedIn() && get(/databases/$(database)/documents/community_servers/$(serverId)).data.ownerId == request.auth.uid;
+      }
+    }
+
+    // --- User Assets ---
+    match /user_assets/{assetId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn() && (resource.data.ownerId == request.auth.uid || isAdmin());
+      
+      function isValidAsset(data) {
+        return data.ownerId == request.auth.uid &&
+               data.type in ['real_estate', 'car', 'collectible', 'banner', 'passes', 'financials', 'weapon', 'ammunition'] &&
+               data.name is string && data.name.size() > 0 &&
+               data.value is number &&
+               data.purchaseDate is number;
+      }
+
+      allow create: if isSignedIn() && isValidAsset(incoming());
+      allow update: if isAdmin(); // Users generally don't update assets, they just have them.
+      allow delete: if isAdmin() || (isSignedIn() && existing().ownerId == request.auth.uid);
+    }
+  }
+}

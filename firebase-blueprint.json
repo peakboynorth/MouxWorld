@@ -1,0 +1,307 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "User digital passport and system flags",
+      "type": "object",
+      "properties": {
+        "displayName": { "type": "string" },
+        "rank": { "type": "string", "enum": ["Wanderer", "Young Adventurer", "Scholar", "Knight", "Lord", "GOD"] },
+        "location": { "type": "string" },
+        "mouxBalance": { "type": "number" },
+        "isBanned": { "type": "boolean" },
+        "ageVerified": { "type": ["boolean", "null"] },
+        "isAdmin": { "type": "boolean" },
+        "isGuest": { "type": "boolean" },
+        "email": { "type": "string" },
+        "nameChangePasses": { "type": "number" },
+        "createdAt": { "type": "number" },
+        "bio": { "type": "string" },
+        "profileColor": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "blockedUsers": { "type": "array", "items": { "type": "string" } },
+        "mutedUsers": { "type": "array", "items": { "type": "string" } },
+        "inventory": { "type": "array", "items": { "type": "string" } },
+        "muteGlobalPopups": { "type": "boolean" },
+        "followersCount": { "type": "number" },
+        "followingCount": { "type": "number" },
+        "recentPosts": { "type": "array", "items": { "type": "number" } },
+        "shadowMutedUntil": { "type": "number" },
+        "is_new_user": { "type": "boolean" }
+      },
+      "required": ["displayName", "rank", "location", "mouxBalance", "isBanned", "isAdmin", "email", "nameChangePasses", "createdAt", "isGuest"]
+    },
+    "AdminLog": {
+      "title": "Admin Action Log",
+      "description": "Record of god actions",
+      "type": "object",
+      "properties": {
+        "adminId": { "type": "string" },
+        "adminName": { "type": "string" },
+        "action": { "type": "string" },
+        "targetId": { "type": "string" },
+        "targetName": { "type": "string" },
+        "details": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["adminId", "adminName", "action", "details", "createdAt"]
+    },
+    "PrivateMessage": {
+      "title": "Private Message",
+      "description": "Encryption-style individual messages",
+      "type": "object",
+      "properties": {
+        "senderId": { "type": "string" },
+        "senderName": { "type": "string" },
+        "receiverId": { "type": "string" },
+        "text": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "read": { "type": "boolean" }
+      },
+      "required": ["senderId", "receiverId", "text", "createdAt"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "System or social alerts",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "type": { "type": "string", "enum": ["dm", "mention", "system"] },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "read": { "type": "boolean" }
+      },
+      "required": ["userId", "type", "title", "message", "createdAt"]
+    },
+    "StatusUpdate": {
+      "title": "World Feed Item",
+      "description": "Feed broadcasts",
+      "type": "object",
+      "properties": {
+        "authorId": { "type": "string" },
+        "authorName": { "type": "string" },
+        "authorIsVerified": { "type": "boolean" },
+        "authorBadges": { "type": "array", "items": { "type": "string" } },
+        "content": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "isMature": { "type": "boolean" },
+        "moderationStatus": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "isEdited": { "type": "boolean" },
+        "isSystem": { "type": "boolean" },
+        "likes": { "type": "array", "items": { "type": "string" } },
+        "reactions": { 
+          "type": "object", 
+          "additionalProperties": { "type": "array", "items": { "type": "string" } } 
+        },
+        "repliesCount": { "type": "number" },
+        "image": { "type": "string" },
+        "poll": {
+          "type": "object",
+          "properties": {
+            "question": { "type": "string" },
+            "options": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "text": { "type": "string" },
+                  "votes": { "type": "array", "items": { "type": "string" } }
+                }
+              }
+            }
+          }
+        }
+      },
+      "required": ["authorId", "authorName", "content", "createdAt"]
+    },
+    "Report": {
+      "title": "User Report",
+      "description": "Content moderation reports",
+      "type": "object",
+      "properties": {
+        "reporterId": { "type": "string" },
+        "reporterName": { "type": "string" },
+        "targetId": { "type": "string" },
+        "targetType": { "type": "string", "enum": ["feed", "chat"] },
+        "targetContent": { "type": "string" },
+        "authorId": { "type": "string" },
+        "reason": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "resolved"] }
+      },
+      "required": ["reporterId", "targetId", "targetType", "reason", "createdAt", "status"]
+    },
+    "ChatMessage": {
+      "title": "Chat Message",
+      "description": "A message in the world chat",
+      "type": "object",
+      "properties": {
+        "authorId": { "type": "string" },
+        "authorName": { "type": "string" },
+        "text": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "isEdited": { "type": "boolean" }
+      },
+      "required": ["authorId", "authorName", "text", "createdAt"]
+    },
+    "CommunityServer": {
+      "title": "Community Realm",
+      "description": "User-created community hubs",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "ownerName": { "type": "string" },
+        "iconURL": { "type": "string" },
+        "isPublic": { "type": "boolean" },
+        "createdAt": { "type": "number" },
+        "membersCount": { "type": "number" }
+      },
+      "required": ["name", "ownerId", "ownerName", "isPublic", "createdAt", "membersCount"]
+    },
+    "UserAsset": {
+      "title": "User Asset",
+      "description": "Tangible assets like cars, real estate, etc.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string" },
+        "type": { "type": "string", "enum": ["real_estate", "car", "collectible", "banner", "passes", "financials", "weapon", "ammunition"] },
+        "name": { "type": "string" },
+        "value": { "type": "number" },
+        "purchaseDate": { "type": "number" },
+        "imageUrl": { "type": "string" }
+      },
+      "required": ["ownerId", "type", "name", "value", "purchaseDate"]
+    },
+    "PostComment": {
+      "title": "Post Comment",
+      "description": "Feedback and responses on feed items",
+      "type": "object",
+      "properties": {
+        "postId": { "type": "string" },
+        "authorId": { "type": "string" },
+        "authorName": { "type": "string" },
+        "content": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["postId", "authorId", "authorName", "content", "createdAt"]
+    },
+    "Config": {
+      "title": "Config",
+      "description": "Global config settings like Selar links",
+      "type": "object",
+      "properties": {
+        "productLink": { "type": "string" }
+      },
+      "required": ["productLink"]
+    },
+    "SystemControl": {
+      "title": "System Control",
+      "description": "Global control flags like enabling/disabling MouxBot",
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" }
+      },
+      "required": ["enabled"]
+    },
+    "RedeemedTransaction": {
+      "title": "Redeemed Transaction",
+      "description": "Redeemed checkout transactions from Selar",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "amount": { "type": "number" },
+        "currency": { "type": "string" },
+        "redeemedAt": { "type": "number" },
+        "mouxCredited": { "type": "number" },
+        "packageName": { "type": "string" },
+        "paymentMethod": { "type": "string" }
+      },
+      "required": ["uid", "amount", "currency", "redeemedAt", "mouxCredited", "paymentMethod"]
+    }
+  },
+  "firestore": {
+    "/system_control/{controlId}": {
+      "schema": "SystemControl",
+      "description": "System control flags"
+    },
+    "/config/{configId}": {
+      "schema": "Config",
+      "description": "System config entries"
+    },
+    "/redeemed_transactions/{transactionId}": {
+      "schema": "RedeemedTransaction",
+      "description": "Redeemed payment transaction ledger"
+    },
+    "/user_assets/{assetId}": {
+      "schema": "UserAsset",
+      "description": "Assets owned by users"
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles and passports"
+    },
+    "/world_feed/{statusId}": {
+      "schema": "StatusUpdate",
+      "description": "World feed updates"
+    },
+    "/world_chat/{messageId}": {
+      "schema": "ChatMessage",
+      "description": "Global chat messages"
+    },
+    "/private_messages/{dmId}": {
+      "schema": "PrivateMessage",
+      "description": "Individual direct messages"
+    },
+    "/notifications/{notifId}": {
+      "schema": "Notification",
+      "description": "User specific notifications"
+    },
+    "/reports/{reportId}": {
+      "schema": "Report",
+      "description": "Content reports for admins"
+    },
+    "/admin_logs/{logId}": {
+      "schema": "AdminLog",
+      "description": "Logs for administrative actions"
+    },
+    "/community_servers/{serverId}": {
+      "schema": "CommunityServer",
+      "description": "User-created community servers"
+    },
+    "/world_countries/{countryId}": {
+      "schema": { "type": "object", "properties": { "name": { "type": "string" }, "presidentId": { "type": ["string", "null"] }, "isPublic": { "type": "boolean" }, "cityOwnerTitle": { "type": "string" } } },
+      "description": "World countries"
+    },
+    "/world_cities/{cityId}": {
+      "schema": { "type": "object", "properties": { "countryId": { "type": "string" }, "name": { "type": "string" }, "ownerId": { "type": ["string", "null"] } } },
+      "description": "World cities"
+    },
+    "/follows/{followId}": {
+      "schema": { "type": "object", "properties": { "followerId": { "type": "string" }, "followingId": { "type": "string" }, "createdAt": { "type": "number" } } },
+      "description": "User follow relationships"
+    },
+    "/post_comments/{commentId}": {
+      "schema": "PostComment",
+      "description": "Comments on world feed posts"
+    },
+    "/settings/{settingId}": {
+      "schema": {
+        "type": "object",
+        "description": "Global application settings",
+        "additionalProperties": true
+      },
+      "description": "System settings"
+    },
+    "/test/{docId}": {
+      "schema": {
+        "type": "object",
+        "description": "Test documents",
+        "additionalProperties": true
+      },
+      "description": "System test collection"
+    }
+  }
+}

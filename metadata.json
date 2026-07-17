@@ -1,0 +1,8 @@
+{
+  "name": "Moux World",
+  "description": "A dark-themed social role-play platform with a digital passport system, world feed, real-time chat, and administrative controls.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
